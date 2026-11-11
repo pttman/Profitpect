@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.xiaozhang.island.verification">
+    <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
+    <application android:label="小账岛设备验证" android:allowBackup="false" android:hasCode="true" />
+    <instrumentation android:name="com.xiaozhang.island.DeviceVerification" android:targetPackage="com.xiaozhang.island" android:functionalTest="true" />
+</manifest>

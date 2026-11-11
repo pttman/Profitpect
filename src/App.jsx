@@ -6,6 +6,8 @@ import { dayOfWeek } from "./lib/dates.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Icon from "./components/Icon.jsx";
 import EntryDialog from "./components/EntryDialog.jsx";
+import SmartEntry from "./components/SmartEntry.jsx";
+import QuickEntry from "./components/QuickEntry.jsx";
 import { EmptyState, IconBadge, Modal } from "./components/ui.jsx";
 import {
   categoryOf,
@@ -25,6 +27,7 @@ import {
   saveLedger,
   STORAGE_KEY,
   validateLedger,
+  readRawLedger,
 } from "./lib/storage.js";
 import { demoEntries } from "./lib/demo.js";
 
@@ -106,6 +109,8 @@ export default function App() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [editor, setEditor] = useState(null);
+  const [smartOpen, setSmartOpen] = useState(false);
+  const [paymentSetupRequested, setPaymentSetupRequested] = useState(false);
   const [detail, setDetail] = useState(null);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [storyOpen, setStoryOpen] = useState(false);
@@ -148,7 +153,7 @@ export default function App() {
 
   useEffect(() => {
     try {
-      baseRef.current = localStorage.getItem(STORAGE_KEY);
+      baseRef.current = readRawLedger();
     } catch {
       setStorageError(
         "当前浏览器无法读写本地存储，请更换浏览器或退出隐私模式后再记账。",
@@ -163,12 +168,25 @@ export default function App() {
       }
       baseRef.current = event.newValue;
       setBook(loaded.data);
-      setToast({ text: "已更新另一页面的账本变化", kind: "info" });
+      setToast({
+        text: globalThis.XiaozhangAndroid
+          ? "已同步付款记账结果"
+          : "已更新另一页面的账本变化",
+        kind: "info",
+      });
     }
     window.addEventListener("storage", sync);
+    const nativeTimer = globalThis.XiaozhangAndroid
+      ? setInterval(() => {
+          const raw = readRawLedger();
+          if (raw !== baseRef.current)
+            sync({ key: STORAGE_KEY, newValue: raw });
+        }, 1500)
+      : null;
     return () => {
       window.removeEventListener("storage", sync);
       clearTimeout(toastTimer.current);
+      clearInterval(nativeTimer);
     };
   }, []);
   useEffect(() => {
@@ -177,6 +195,14 @@ export default function App() {
       book.settings.reduceMotion,
     );
   }, [book.settings.reduceMotion]);
+  useEffect(() => {
+    if (page === "wallet" && paymentSetupRequested) {
+      document
+        .getElementById("payment-settings")
+        ?.scrollIntoView({ block: "start" });
+      setPaymentSetupRequested(false);
+    }
+  }, [page, paymentSetupRequested]);
 
   function notify(text, undo) {
     clearTimeout(toastTimer.current);
@@ -189,19 +215,19 @@ export default function App() {
       return false;
     }
     try {
-      if (localStorage.getItem(STORAGE_KEY) !== baseRef.current) {
+      if (readRawLedger() !== baseRef.current) {
         const loaded = loadLedger();
         if (loaded.error) {
           setStorageError(loaded.error);
           return false;
         }
         setBook(loaded.data);
-        baseRef.current = localStorage.getItem(STORAGE_KEY);
+        baseRef.current = readRawLedger();
         notify("另一页面刚刚修改了账本，已更新，请重试");
         return false;
       }
       const previous = book;
-      saveLedger(next);
+      saveLedger(next, baseRef.current);
       const savedRaw = JSON.stringify(next);
       baseRef.current = savedRaw;
       setBook(next);
@@ -210,12 +236,12 @@ export default function App() {
           text,
           undoable
             ? () => {
-                if (localStorage.getItem(STORAGE_KEY) !== savedRaw) {
+                if (readRawLedger() !== savedRaw) {
                   notify("账本已有后续变化，无法撤销这一笔");
                   return;
                 }
                 try {
-                  saveLedger(previous);
+                  saveLedger(previous, savedRaw);
                   baseRef.current = JSON.stringify(previous);
                   setBook(previous);
                   notify("已撤销，账本已恢复");
@@ -240,6 +266,14 @@ export default function App() {
   function saveEntry(candidate, continueAdding) {
     try {
       validateEntry(candidate);
+      if (
+        candidate.paymentId &&
+        !candidate.id &&
+        (book.paymentReceipts ?? []).includes(candidate.paymentId)
+      ) {
+        notify("这笔付款已经处理，无需重复记账");
+        return false;
+      }
       if (candidate.id) {
         const existing = book.entries.find((item) => item.id === candidate.id);
         if (!existing || existing.updatedAt !== candidate.updatedAt) {
@@ -264,6 +298,9 @@ export default function App() {
         started: true,
         entries: nextEntries,
         unlockedStage: Math.max(book.unlockedStage, newStage),
+        paymentReceipts: candidate.paymentId
+          ? [...new Set([...(book.paymentReceipts ?? []), candidate.paymentId])]
+          : (book.paymentReceipts ?? []),
       };
       if (
         !commit(
@@ -362,6 +399,11 @@ export default function App() {
         `未恢复：${err instanceof SyntaxError ? "文件不是有效的 JSON 备份" : err.message}`,
       );
     }
+  }
+
+  function openDraft(draft) {
+    setSmartOpen(false);
+    setEditor({ draft });
   }
 
   return (
@@ -465,7 +507,7 @@ export default function App() {
                   try {
                     downloadFile(
                       `小账岛-原始数据-${today()}.txt`,
-                      localStorage.getItem(STORAGE_KEY) ?? "",
+                      readRawLedger() ?? "",
                     );
                   } catch {
                     notify("当前浏览器无法访问存储");
@@ -519,14 +561,38 @@ export default function App() {
                       : "小小的口袋，装着属于你的安心。"}
               </p>
             </div>
-            <button
-              className="button primary add-entry"
-              onClick={() => setEditor({})}
-            >
-              <Icon name="Plus" size={19} />
-              记一笔
-            </button>
           </div>
+
+          {page === "home" && (
+            <section className="smart-banner" aria-label="智能记账">
+              <span className="smart-symbol">
+                <Icon name="Sparkles" size={25} />
+              </span>
+              <div>
+                <span className="smart-tag">少输入一点，多记住一点</span>
+                <h2>一句话记账，付款也能自动记</h2>
+                <p>
+                  描述收支生成草稿，或识别安卓付款成功页面，让日常记录更轻松。
+                </p>
+              </div>
+              <div className="smart-actions">
+                <span className="smart-entry-hint">
+                  右下角长按，切换记账方式
+                  <Icon name="ArrowDownLeft" size={17} />
+                </span>
+                <button
+                  className="text-button"
+                  onClick={() => {
+                    setPage("wallet");
+                    setPaymentSetupRequested(true);
+                  }}
+                >
+                  设置付款识别
+                  <Icon name="ArrowRight" size={16} />
+                </button>
+              </div>
+            </section>
+          )}
 
           {page === "home" && (
             <HomePage
@@ -592,6 +658,7 @@ export default function App() {
               exportBackup={exportBackup}
               importRef={importRef}
               exportCSV={exportCSV}
+              onDraft={openDraft}
             />
           )}
 
@@ -605,6 +672,23 @@ export default function App() {
         </main>
       </div>
 
+      <QuickEntry
+        onManual={() => setEditor({})}
+        onAI={() => setSmartOpen(true)}
+        onPayment={() => {
+          setPage("wallet");
+          setPaymentSetupRequested(true);
+        }}
+        disabled={
+          !!editor ||
+          smartOpen ||
+          !!detail ||
+          budgetOpen ||
+          storyOpen ||
+          aboutOpen ||
+          !!restore
+        }
+      />
       <nav className="mobile-nav" aria-label="移动主导航">
         {NAV.map((item) => (
           <button
@@ -628,12 +712,16 @@ export default function App() {
       />
       {editor && (
         <EntryDialog
-          key={editor.id ?? "new"}
+          key={editor.id ?? (editor.draft ? "draft" : "new")}
           entry={editor.id ? editor : undefined}
+          draft={editor.draft}
           onSave={saveEntry}
           onClose={() => setEditor(null)}
           demo={demo}
         />
+      )}
+      {smartOpen && (
+        <SmartEntry onClose={() => setSmartOpen(false)} onDraft={openDraft} />
       )}
       {budgetOpen && (
         <BudgetDialog
@@ -680,6 +768,15 @@ export default function App() {
                 <dt>账户</dt>
                 <dd>日常账户</dd>
               </div>
+              {detail.paymentId && (
+                <div>
+                  <dt>记录来源</dt>
+                  <dd>
+                    {detail.source === "wechat" ? "微信" : "支付宝"}
+                    {detail.captureMethod === "page" ? "付款页面" : "付款通知"}
+                  </dd>
+                </div>
+              )}
             </dl>
           </div>
           {demo ? (
@@ -781,7 +878,7 @@ export default function App() {
               当前是可运行的首版框架，支持单账户手工记账。转账、退款、多账户、离线安装与云同步仍在准备中，请先保留自己的完整原始流水。
             </p>
             <p>
-              数据只在这台设备的当前浏览器中。浏览器清理、隐私模式或更换设备可能导致数据无法保留，请定期导出完整备份。
+              账本保存在当前设备：网页版使用浏览器存储，安卓包使用应用本地存储。清理数据、卸载应用或更换设备可能导致数据无法保留，请定期导出完整备份。
             </p>
             <p className="about-signature">
               <Icon name="Leaf" size={18} />

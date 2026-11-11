@@ -8,7 +8,13 @@ export const createLedger = () => ({
   budgets: {},
   settings: { hidden: false, island: true, reduceMotion: false },
   unlockedStage: 0,
+  paymentReceipts: [],
 });
+export function readRawLedger() {
+  return globalThis.XiaozhangAndroid
+    ? globalThis.XiaozhangAndroid.readLedger() || null
+    : localStorage.getItem(STORAGE_KEY);
+}
 export function validateLedger(data) {
   if (
     !data ||
@@ -25,6 +31,16 @@ export function validateLedger(data) {
   if (!data.started && data.entries.length)
     throw new Error("备份中的账本状态与记录不一致");
   const ids = new Set();
+  const paymentIds = new Set();
+  if (
+    data.paymentReceipts !== undefined &&
+    (!Array.isArray(data.paymentReceipts) ||
+      data.paymentReceipts.some(
+        (id) => typeof id !== "string" || !id || id.length > 200,
+      ) ||
+      new Set(data.paymentReceipts).size !== data.paymentReceipts.length)
+  )
+    throw new Error("备份中的付款去重信息无效");
   for (const entry of data.entries) {
     validateEntry(entry);
     if (
@@ -36,6 +52,14 @@ export function validateLedger(data) {
     )
       throw new Error("备份中存在重复或无效记录");
     ids.add(entry.id);
+    if (entry.paymentId) {
+      if (
+        paymentIds.has(entry.paymentId) ||
+        !data.paymentReceipts?.includes(entry.paymentId)
+      )
+        throw new Error("备份存在重复付款或缺失付款去重信息");
+      paymentIds.add(entry.paymentId);
+    }
   }
   for (const [month, amount] of Object.entries(data.budgets)) {
     if (
@@ -62,7 +86,7 @@ export function validateLedger(data) {
 }
 export function loadLedger() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = readRawLedger();
     return {
       data: raw ? validateLedger(JSON.parse(raw)) : createLedger(),
       error: null,
@@ -75,11 +99,23 @@ export function loadLedger() {
     };
   }
 }
-export function saveLedger(data) {
+export function saveLedger(data, expected = readRawLedger()) {
   validateLedger(data);
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  if (globalThis.XiaozhangAndroid) {
+    if (
+      !globalThis.XiaozhangAndroid.writeLedger(
+        expected ?? "",
+        JSON.stringify(data),
+      )
+    )
+      throw new Error("账本已变化或存储失败，请重试");
+  } else localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
 }
 export function downloadFile(name, content, type = "application/json") {
+  if (globalThis.XiaozhangAndroid) {
+    globalThis.XiaozhangAndroid.exportFile(name, content, type);
+    return;
+  }
   const url = URL.createObjectURL(new Blob([content], { type }));
   const link = document.createElement("a");
   link.href = url;

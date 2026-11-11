@@ -71,6 +71,23 @@ export function validateEntry(entry) {
     throw new Error("请选择有效分类");
   if (typeof entry.note !== "string" || entry.note.length > 200)
     throw new Error("备注最多 200 字");
+  if (
+    entry.paymentId !== undefined &&
+    (typeof entry.paymentId !== "string" ||
+      !entry.paymentId ||
+      entry.paymentId.length > 200)
+  )
+    throw new Error("付款来源标识无效");
+  if (
+    entry.source !== undefined &&
+    !["wechat", "alipay"].includes(entry.source)
+  )
+    throw new Error("付款来源无效");
+  if (
+    entry.captureMethod !== undefined &&
+    !["page", "notification"].includes(entry.captureMethod)
+  )
+    throw new Error("付款识别方式无效");
   return entry;
 }
 export function summarize(entries, month) {

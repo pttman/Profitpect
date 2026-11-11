@@ -1,4 +1,5 @@
 import Icon from "../components/Icon.jsx";
+import PaymentSettings from "../components/PaymentSettings.jsx";
 
 export default function PocketPage({
   money,
@@ -9,6 +10,7 @@ export default function PocketPage({
   exportBackup,
   importRef,
   exportCSV,
+  onDraft,
 }) {
   return (
     <>
@@ -44,9 +46,9 @@ export default function PocketPage({
           </span>
           <h2>你的小账本，只属于你</h2>
           <p>
-            无需登录，数据保存在当前浏览器。
+            无需登录，账本保存在当前设备。
             <br />
-            换设备或清理浏览器前，记得带走备份。
+            换设备、卸载或清理数据前，记得带走备份。
           </p>
           <button className="text-button" onClick={() => setAboutOpen(true)}>
             了解这个小岛
@@ -54,6 +56,7 @@ export default function PocketPage({
           </button>
         </article>
       </section>
+      <PaymentSettings onDraft={onDraft} money={money} started={book.started} />
       <section className="settings-grid">
         <article className="card">
           <div className="section-heading">
@@ -144,7 +147,7 @@ export default function PocketPage({
       </section>
       <div className="version-note">
         <Icon name="Leaf" size={15} />
-        小账岛 · 初遇版 0.1<span>从简单的日常收支，慢慢开始。</span>
+        小账岛 · 智能记账版 0.3<span>从简单的日常收支，慢慢开始。</span>
       </div>
     </>
   );

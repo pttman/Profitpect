@@ -30,6 +30,7 @@ yarn-error.log*
 
 # Local environment and keys
 .env*
+!.env.example
 .dev.vars*
 *.pem
 
@@ -46,3 +47,12 @@ yarn-error.log*
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Android generated files and signing material
+/android/build/
+/android/app/build/
+/android/app/src/main/assets/web/
+/android/.gradle/
+/android/local.properties
+*.keystore
+*.jks

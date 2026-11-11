@@ -17,3 +17,14 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - name: Verify Android payment parser
+        run: |
+          mkdir -p android/build/parser-tests
+          javac -encoding UTF-8 --release 8 -d android/build/parser-tests android/app/src/main/java/com/xiaozhang/island/PaymentParser.java android/tests/PaymentParserTest.java
+          java -cp android/build/parser-tests com.xiaozhang.island.PaymentParserTest
+          javac -encoding UTF-8 --release 8 -d android/build/parser-tests android/app/src/main/java/com/xiaozhang/island/PaymentParser.java android/app/src/main/java/com/xiaozhang/island/PaymentPageParser.java android/tests/PaymentPageParserTest.java
+          java -cp android/build/parser-tests com.xiaozhang.island.PaymentPageParserTest

@@ -12,7 +12,7 @@ export function EntryRow({ entry, onClick, money }) {
         <span>
           {category.name}
           <i />
-          日常账户
+          日常账户{entry.paymentId ? " · 付款识别" : ""}
         </span>
       </span>
       <span

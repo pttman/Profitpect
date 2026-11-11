@@ -8,18 +8,19 @@ import {
   today,
 } from "../lib/ledger.js";
 
-export default function EntryDialog({ entry, onSave, onClose, demo }) {
-  const [type, setType] = useState(entry?.type ?? "expense");
+export default function EntryDialog({ entry, draft, onSave, onClose, demo }) {
+  const initial = entry ?? draft;
+  const [type, setType] = useState(initial?.type ?? "expense");
   const [amount, setAmount] = useState(
-    entry ? (entry.amount / 100).toFixed(2) : "",
+    initial ? (initial.amount / 100).toFixed(2) : "",
   );
-  const [category, setCategory] = useState(entry?.category ?? "");
-  const [date, setDate] = useState(entry?.date ?? today());
-  const [note, setNote] = useState(entry?.note ?? "");
+  const [category, setCategory] = useState(initial?.category ?? "");
+  const [date, setDate] = useState(initial?.date ?? today());
+  const [note, setNote] = useState(initial?.note ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [continueAdding, setContinueAdding] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  const [dirty, setDirty] = useState(!!draft);
   const categories = type === "expense" ? CATEGORIES : INCOME_CATEGORIES;
   const close = () => {
     if (dirty && !window.confirm("这一笔还没有保存，确定放弃吗？")) return;
@@ -35,10 +36,10 @@ export default function EntryDialog({ entry, onSave, onClose, demo }) {
       if (!date || date > today()) throw new Error("请选择今天或过去的日期");
       setBusy(true);
       const ok = onSave(
-        { ...entry, type, amount: cents, category, date, note: note.trim() },
-        continueAdding && !entry,
+        { ...initial, type, amount: cents, category, date, note: note.trim() },
+        continueAdding && !entry && !draft?.paymentId,
       );
-      if (ok && continueAdding && !entry) {
+      if (ok && continueAdding && !entry && !draft?.paymentId) {
         setAmount("");
         setCategory("");
         setNote("");
@@ -55,7 +56,7 @@ export default function EntryDialog({ entry, onSave, onClose, demo }) {
   }
   return (
     <Modal
-      title={entry ? "修改这一笔" : "记下生活的一笔"}
+      title={entry ? "修改这一笔" : draft ? "核对识别结果" : "记下生活的一笔"}
       description={
         demo
           ? "保存后开启你的空白账本，示例数据不会带入。"
@@ -164,7 +165,7 @@ export default function EntryDialog({ entry, onSave, onClose, demo }) {
             {error}
           </p>
         )}
-        {!entry && (
+        {!entry && !draft?.paymentId && (
           <label className="checkbox-label">
             <input
               type="checkbox"
@@ -184,7 +185,7 @@ export default function EntryDialog({ entry, onSave, onClose, demo }) {
         </button>
         <p className="form-footnote">
           <Icon name="ShieldCheck" size={13} />
-          只保存在这台设备，安心记下每一天
+          账本保存在这台设备，安心记下每一天
         </p>
       </form>
     </Modal>
